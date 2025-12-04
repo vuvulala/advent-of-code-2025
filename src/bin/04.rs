@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 advent_of_code::solution!(4);
 
 #[derive(Clone, Copy, Debug)]
@@ -15,61 +17,53 @@ impl std::fmt::Display for CellType {
     }
 }
 
-#[derive(Debug)]
-struct Map {
-    map: Vec<CellType>,
-    pub width: usize,
+impl FromStr for CellType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.chars().next().unwrap() {
+            '@' => Ok(Self::Paper),
+            '.' => Ok(Self::Floor),
+            _ => panic!(),
+        }
+    }
 }
 
-impl Map {
-    pub fn from_str(s: &str) -> Self {
-        let mut cells = Vec::new();
-        let mut width = 0;
-        for line in s.lines() {
-            width = line.trim().len();
+struct DynGrid<T> {
+    arena: Vec<T>,
+    width: usize,
+}
 
+impl<T: FromStr> FromStr for DynGrid<T> {
+    type Err = T::Err;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut lines = s.lines().peekable();
+        let width = lines.peek().unwrap().trim().len();
+
+        let mut s = Self::new();
+        s.width = width;
+
+        for line in lines {
             for c in line.trim().chars() {
-                cells.push(match c {
-                    '@' => CellType::Paper,
-                    '.' => CellType::Floor,
-                    _ => panic!(),
-                });
+                s.arena.push(T::from_str(&c.to_string())?)
             }
         }
 
-        Self { map: cells, width }
+        Ok(s)
+    }
+}
+
+impl<T> DynGrid<T> {
+    pub fn new() -> Self {
+        Self {
+            arena: Vec::new(),
+            width: 0,
+        }
     }
 
-    pub fn get_cell(&self, x: isize, y: isize) -> Option<CellType> {
-        if x < 0 {
-            return None;
-        }
-        if y < 0 {
-            return None;
-        }
-        if x >= self.width.try_into().unwrap() {
-            return None;
-        }
-        if y >= (self.map.len() / self.width).try_into().unwrap() {
-            return None;
-        }
-
-        return Some(self.map[x as usize + y as usize * self.width]);
-    }
-
-    pub fn get_neighbours(&self, x: isize, y: isize) -> Vec<Option<CellType>> {
-        let mut neighbours = Vec::new();
-        for ix in -1..=1 {
-            for iy in -1..=1 {
-                if ix == 0 && iy == 0 {
-                    continue;
-                }
-
-                neighbours.push(self.get_cell(x + ix, y + iy));
-            }
-        }
-
-        neighbours
+    pub fn set_width(&mut self, width: usize) {
+        self.width = width;
     }
 
     pub fn width(&self) -> usize {
@@ -77,53 +71,86 @@ impl Map {
     }
 
     pub fn height(&self) -> usize {
-        self.map.len() / self.width
+        self.arena.len() / self.width
     }
 
-    pub fn set_cell(&mut self, x: isize, y: isize, t: CellType) -> Result<(), ()> {
-        if x < 0 {
-            return Err(());
+    pub fn get_cell_signed(&self, x: isize, y: isize) -> Option<&T> {
+        if x < 0 || x >= self.width().try_into().unwrap() {
+            return None;
         }
-        if y < 0 {
-            return Err(());
-        }
-        if x >= self.width.try_into().unwrap() {
-            return Err(());
-        }
-        if y >= (self.map.len() / self.width).try_into().unwrap() {
-            return Err(());
+        if y < 0 || y >= self.height().try_into().unwrap() {
+            return None;
         }
 
-        self.map[x as usize + y as usize * self.width] = t;
-        Ok(())
+        return Some(&self.arena[x as usize + y as usize * self.width()]);
     }
-}
 
-impl std::fmt::Display for Map {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for row in 0..self.height() {
-            for cell in 0..self.width() {
-                //println!("get cell {row}, {cell}");
-                self.get_cell(cell as isize, row as isize)
-                    .unwrap()
-                    .fmt(f)
-                    .unwrap();
+    pub fn get_cell(&self, x: usize, y: usize) -> Option<&T> {
+        if x >= self.width() {
+            return None;
+        }
+        if y >= self.height() {
+            return None;
+        }
+
+        return Some(&self.arena[x + y * self.width()]);
+    }
+
+    pub fn get_cell_signed_mut(&mut self, x: isize, y: isize) -> Option<&mut T> {
+        if x < 0 || x >= self.width().try_into().unwrap() {
+            return None;
+        }
+        if y < 0 || y >= self.height().try_into().unwrap() {
+            return None;
+        }
+
+        let w = self.width();
+        return Some(&mut self.arena[x as usize + y as usize * w]);
+    }
+
+    pub fn get_cell_mut(&mut self, x: usize, y: usize) -> Option<&mut T> {
+        if x >= self.width() {
+            return None;
+        }
+        if y >= self.height() {
+            return None;
+        }
+        let w = self.width();
+        return Some(&mut self.arena[x + y * w]);
+    }
+
+    pub fn get_neighbours(&self, x: usize, y: usize) -> Vec<Option<&T>> {
+        let mut neighbours = Vec::new();
+        for iy in -1..=1 {
+            for ix in -1..=1 {
+                if ix == 0 && iy == 0 {
+                    continue;
+                }
+                neighbours.push(self.get_cell_signed(x as isize + ix, y as isize + iy));
             }
-            f.write_str("\n").unwrap();
         }
+
+        neighbours
+    }
+
+    pub fn set_cell(&mut self, x: usize, y: usize, t: T) -> Result<(), ()> {
+        let c = self.get_cell_mut(x, y).ok_or(())?;
+
+        *c = t;
+
         Ok(())
     }
 }
 
 pub fn part_one(input: &str) -> Option<u64> {
-    let map = Map::from_str(input);
+    let map = DynGrid::<CellType>::from_str(input).unwrap();
 
     let mut available_count = 0;
 
     for y in 0..map.height() {
         for x in 0..map.width() {
-            let neighbours = map.get_neighbours(x as isize, y as isize);
-
+            let neighbours = map.get_neighbours(x, y);
+            println!("{neighbours:?}");
             let mut paper_count = 0;
 
             for n in neighbours {
@@ -138,7 +165,7 @@ pub fn part_one(input: &str) -> Option<u64> {
             }
 
             if paper_count < 4 {
-                match map.get_cell(x as isize, y as isize).unwrap() {
+                match map.get_cell(x, y).unwrap() {
                     CellType::Floor => {}
                     CellType::Paper => {
                         available_count += 1;
@@ -146,7 +173,7 @@ pub fn part_one(input: &str) -> Option<u64> {
                 }
             }
 
-            //println!("{x}, {y} -> {paper_count}");
+            println!("{x}, {y} -> {paper_count}");
         }
     }
 
@@ -154,7 +181,7 @@ pub fn part_one(input: &str) -> Option<u64> {
 }
 
 pub fn part_two(input: &str) -> Option<u64> {
-    let mut map = Map::from_str(input);
+    let mut map = DynGrid::<CellType>::from_str(input).unwrap();
 
     let mut available_count = 0;
 
@@ -164,7 +191,7 @@ pub fn part_two(input: &str) -> Option<u64> {
         total_changed = 0;
         for y in 0..map.height() {
             for x in 0..map.width() {
-                let neighbours = map.get_neighbours(x as isize, y as isize);
+                let neighbours = map.get_neighbours(x, y);
 
                 let mut paper_count = 0;
 
@@ -180,12 +207,12 @@ pub fn part_two(input: &str) -> Option<u64> {
                 }
 
                 if paper_count < 4 {
-                    match map.get_cell(x as isize, y as isize).unwrap() {
+                    match map.get_cell(x, y).unwrap() {
                         CellType::Floor => {}
                         CellType::Paper => {
                             available_count += 1;
-                            map.set_cell(x as isize, y as isize, CellType::Floor)
-                                .unwrap();
+                            *map.get_cell_mut(x, y).unwrap() = CellType::Floor;
+
                             total_changed += 1;
                         }
                     }
