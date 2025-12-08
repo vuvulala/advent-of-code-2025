@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 advent_of_code::solution!(4);
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CellType {
     Floor,
     Paper,
@@ -34,7 +34,7 @@ struct DynGrid<T> {
     width: usize,
 }
 
-impl<T: FromStr> FromStr for DynGrid<T> {
+impl<T: FromStr + PartialEq> FromStr for DynGrid<T> {
     type Err = T::Err;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -54,7 +54,7 @@ impl<T: FromStr> FromStr for DynGrid<T> {
     }
 }
 
-impl<T> DynGrid<T> {
+impl<T: PartialEq> DynGrid<T> {
     pub fn new() -> Self {
         Self {
             arena: Vec::new(),
@@ -140,6 +140,20 @@ impl<T> DynGrid<T> {
 
         Ok(())
     }
+
+    pub fn count_matching_neighbours(&self, x: usize, y: usize, to_match: T) -> usize {
+        let mut count = 0;
+
+        for n in self.get_neighbours(x, y) {
+            if let Some(t) = n {
+                if *t == to_match {
+                    count += 1;
+                }
+            }
+        }
+
+        count
+    }
 }
 
 pub fn part_one(input: &str) -> Option<u64> {
@@ -149,31 +163,17 @@ pub fn part_one(input: &str) -> Option<u64> {
 
     for y in 0..map.height() {
         for x in 0..map.width() {
-            let neighbours = map.get_neighbours(x, y);
-            println!("{neighbours:?}");
-            let mut paper_count = 0;
-
-            for n in neighbours {
-                if let Some(t) = n {
-                    match t {
-                        CellType::Floor => {}
-                        CellType::Paper => {
-                            paper_count += 1;
-                        }
-                    }
+            if let Some(c) = map.get_cell(x, y) {
+                if *c == CellType::Floor {
+                    continue;
                 }
             }
+
+            let paper_count = map.count_matching_neighbours(x, y, CellType::Paper);
 
             if paper_count < 4 {
-                match map.get_cell(x, y).unwrap() {
-                    CellType::Floor => {}
-                    CellType::Paper => {
-                        available_count += 1;
-                    }
-                }
+                available_count += 1;
             }
-
-            println!("{x}, {y} -> {paper_count}");
         }
     }
 
@@ -191,34 +191,19 @@ pub fn part_two(input: &str) -> Option<u64> {
         total_changed = 0;
         for y in 0..map.height() {
             for x in 0..map.width() {
-                let neighbours = map.get_neighbours(x, y);
-
-                let mut paper_count = 0;
-
-                for n in neighbours {
-                    if let Some(t) = n {
-                        match t {
-                            CellType::Floor => {}
-                            CellType::Paper => {
-                                paper_count += 1;
-                            }
-                        }
-                    }
-                }
+                let paper_count = map.count_matching_neighbours(x, y, CellType::Paper);
 
                 if paper_count < 4 {
-                    match map.get_cell(x, y).unwrap() {
+                    let c = map.get_cell_mut(x, y).unwrap();
+                    match c {
                         CellType::Floor => {}
                         CellType::Paper => {
                             available_count += 1;
-                            *map.get_cell_mut(x, y).unwrap() = CellType::Floor;
-
                             total_changed += 1;
+                            *c = CellType::Floor;
                         }
                     }
                 }
-
-                //println!("{x}, {y} -> {paper_count}");
             }
         }
     }
